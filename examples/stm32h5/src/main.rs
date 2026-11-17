@@ -4,9 +4,9 @@
 use defmt::*;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
-use embassy_net::StackStorage;
 use embassy_net::tcp::TcpSocket;
-use embassy_net::wire::Ipv4Address;
+use embassy_net::wire::Ipv4Addr;
+use embassy_net::{StackStorage, StaticPool};
 use embassy_stm32::eth::{Ethernet, GenericPhy, PacketQueue, Sma};
 use embassy_stm32::peripherals::{ETH, ETH_SMA};
 use embassy_stm32::rcc::{
@@ -47,6 +47,7 @@ async fn main(spawner: Spawner) -> ! {
         source: PllSource::Hse,
         prediv: PllPreDiv::Div2,
         mul: PllMul::Mul125,
+        fracn: None,
         divp: Some(PllDiv::Div2),
         divq: Some(PllDiv::Div2),
         divr: None,
@@ -69,7 +70,7 @@ async fn main(spawner: Spawner) -> ! {
     let mac_addr = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     static PACKETS: StaticCell<PacketQueue<4, 4>> = StaticCell::new();
-    let device = Ethernet::new(
+    let device = unwrap!(Ethernet::new(
         PACKETS.init(PacketQueue::<4, 4>::new()),
         p.ETH,
         p.PA1,
@@ -84,14 +85,16 @@ async fn main(spawner: Spawner) -> ! {
         p.PA2,
         p.PC1,
         Irqs,
-    );
+    ));
 
     static STACK: StaticCell<StackStorage> = StaticCell::new();
-    let (stack, runner) = embassy_net::Stack::new(STACK.init(StackStorage::new()), seed);
+    // The Ethernet DMA needs 8-byte aligned buffers, sized in multiples of 8.
+    static POOL: StaticPool<1520, 16, 8> = StaticPool::new();
+    let (stack, runner) = embassy_net::Stack::new(STACK.init(StackStorage::new()), &POOL, seed);
 
     static DEVICE: StaticCell<Device> = StaticCell::new();
-    let iface = unwrap!(stack.add_iface(DEVICE.init(device)));
-    iface.set_dhcpv4(Some(Default::default()));
+    let iface = unwrap!(stack.add_iface_borrowed(DEVICE.init(device)));
+    unwrap!(iface.set_dhcpv4(Some(Default::default())));
 
     spawner.spawn(unwrap!(net_task(runner)));
 
@@ -109,7 +112,7 @@ async fn main(spawner: Spawner) -> ! {
 
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        let remote_endpoint = (Ipv4Address::new(192, 168, 69, 100), 12345);
+        let remote_endpoint = (Ipv4Addr::new(192, 168, 69, 100), 12345);
         info!("connecting...");
         if let Err(e) = socket.connect(remote_endpoint).await {
             info!("connect error: {:?}", e);

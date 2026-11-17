@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Update embassy-crypto to embassy `da5e85fe5`. The `embassy-crypto` drivers that an application registers must come from the same embassy commit.
 - Update rsa dependency to 0.10.0
 - Fix the client accepting a server `Finished` without server authentication (#215). The client now requires a verified `Certificate` and `CertificateVerify`, in that order, or a pre-shared key it offered.
 - A `write` or `flush` that is cancelled or fails part way through a TLS record is completed by the next `write` or `flush`.
